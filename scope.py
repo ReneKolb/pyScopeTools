@@ -57,7 +57,7 @@ plt.show()
 #            print("Cannot open connection.")
         if "COM" in address:
             self.con = serialConnection.SerialComm(address, baudrate, eol='\r\n')
-        else if "GPIB" in address:
+        elif "GPIB" in address:
             self.con = GPIBConnection.GPIBComm(address, eol='\r\n')
         else:
             print("No valid address type")
@@ -96,10 +96,11 @@ plt.show()
             
             if read_ch1:
                 self.con.writeline("DAT:SOU CH1")
-                self.con.writeline("WFMPRe:XINCR?;XZERO?;YMULT?;YZERO?;YOFF?") #only request neccessary parameters (not complete WFMPRe?)
+                out = self.con.query("WFMPRe:XINCR?;XZERO?;YMULT?;YZERO?;YOFF?") #only request neccessary parameters (not complete WFMPRe?)
                 #maybe also request XUNIT and YUNIT? but it seems to be always sec and Volts
-                out = self.con.readline()
-                
+#                out = self.con.readline()
+#                if out[-1] == 'E':
+#                    out += "1"
                 params = {}
                 out = out.split(';')
                 for s in out:
@@ -107,12 +108,15 @@ plt.show()
                      params[d[0][8:]] = d[1]
 
                 self.con.writeline("CURV?") #request the curve data    
-                self.con.read(7) #read ":CURVE "
-                self.con.read(6) #read "#45000" or "#42500": 5000 or 2500 is the datapoint amount
+                out = self.con.readline_raw()
+                out = out[13:-1]
+                #self.con.read(7) #read ":CURVE "
+                #self.con.read(6) #read "#45000" or "#42500": 5000 or 2500 is the datapoint amount
                 
-                out = self.con.read_raw(byte_wid*2500)
-                # read the closing \r\n
-                self.con.read(2)
+                #out = self.con.read_raw(13+byte_wid*2500+2)[13:-2]
+                #out = self.con.read_raw(byte_wid*2500+2)[15:-2]
+#                # read the closing \r\n
+#                self.con.read(2)
                 
                 if byte_wid == 1:
                     if len(out) > 2500:
@@ -141,13 +145,15 @@ plt.show()
                      d = s.split(" ") #now split on the space sign
                      params[d[0][8:]] = d[1]
 
-                self.con.writeline("CURV?") #request the curve data    
-                self.con.read(7) #read ":CURVE "
-                self.con.read(6) #read "#45000" or "#42500": 5000 or 2500 is the datapoint amount
-                
-                out = self.con.read_raw(byte_wid*2500)
-                # read the closing \r\n
-                self.con.read(2)
+                self.con.writeline("CURV?") #request the curve data
+                out = self.con.readline_raw()
+                out = out[13:-1]                
+#                self.con.read(7) #read ":CURVE "
+#                self.con.read(6) #read "#45000" or "#42500": 5000 or 2500 is the datapoint amount
+#                
+#                out = self.con.read_raw(byte_wid*2500)
+#                # read the closing \r\n
+#                self.con.read(2)
                 
                 if byte_wid == 1:
                     if len(out) > 2500:
@@ -194,3 +200,4 @@ plt.show()
             except:
                 print("Error Closing")
                 return (0,0)
+

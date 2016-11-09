@@ -15,24 +15,22 @@ class GPIBComm:
     def __init__(self, address, timeout=2000, eol='\r\n'):
         rm = visa.ResourceManager()
         try:
-            self.inst = rm.open_resource(address, read_termination=eol)
+            self.inst = rm.open_resource(address)#, read_termination=eol)
         except:
             print "Cannot open connection."
             
         if timeout:
             self.inst.timeout = timeout
-
-        self.debug = debug
         
     def readline(self):
         return self.inst.read()
         
     def read(self, bytes=1):
-        return self.inst.read_raw(bytes)
+        return self.readline_raw()
         #return self.connection.read(bytes)
         
-    def read_raw(self, bytes=1):
-        return self.inst.read_raw(bytes)
+    def readline_raw(self):
+        return self.inst.read_raw()
 
     def write(self, message):
         self.writeline(message)
@@ -44,6 +42,6 @@ class GPIBComm:
         oldTimeout = self.inst.timeout
         if timeout:
             self.inst.timeout = timeout
-        result = self.query(msg)
+        result = self.inst.query(msg)
         self.inst.timeout = oldTimeout
         return result    

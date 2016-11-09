@@ -12,15 +12,18 @@ class SerialComm:
         out = ""
         while not '\r\n' in out:
             out += self.serial.read(self.serial.inWaiting()).decode('ascii')
-        return out    
+        return out.replace('\r\n','')
 
         
     def read(self, bytes=1):
         return self.serial.read(bytes).decode('ascii')
         #return self.connection.read(bytes)
         
-    def read_raw(self, bytes=1):
-        return self.serial.read(bytes)
+    def readline_raw(self):
+        out = b""
+        while not b'\r\n' in out:
+            out += self.serial.read(self.serial.inWaiting())
+        return out.replace(b'\r\n',b'\n')
 
     def write(self, message):
         self.writeline(message)
