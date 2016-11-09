@@ -1,3 +1,4 @@
+from __future__ import print_function
 import visa
 
 """
@@ -17,7 +18,7 @@ class GPIBComm:
         try:
             self.inst = rm.open_resource(address)#, read_termination=eol)
         except:
-            print "Cannot open connection."
+            print("Cannot open connection.")
             
         if timeout:
             self.inst.timeout = timeout

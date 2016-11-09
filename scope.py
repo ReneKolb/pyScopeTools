@@ -4,11 +4,6 @@ import time
 import numpy as np
 import traceback
 
-import serialConnection
-import GPIBConnection
-
-
-    
 
 class Scope:
     """Object modeling the oszilloscope
@@ -49,23 +44,14 @@ plt.show()
         timeout - set the timeout. NOTICE: a serial connection needs a long timeout, so the default value is 6sec!
         debug - switch the command line output
         """
-#        self.debug = True
-#        rm = visa.ResourceManager()
-#        try:
-#            self.inst = rm.open_resource(address, read_termination='\r\n')
-#        except:
-#            print("Cannot open connection.")
         if "COM" in address:
+            import serialConnection
             self.con = serialConnection.SerialComm(address, baudrate, eol='\r\n')
         elif "GPIB" in address:
+            import GPIBConnection
             self.con = GPIBConnection.GPIBComm(address, eol='\r\n')
         else:
             print("No valid address type")
-        #self.inst = serial.Serial(address,baudrate)
-#        if timeout:
-#            self.inst.timeout = timeout
-#        if "COM" in address:
-#            self.inst.baud_rate=baudrate    
         self.debug = debug
         
     def readScope(self, channel="CH1", fast_mode=True):
@@ -83,17 +69,17 @@ plt.show()
             return
         # catch possible exceptions
         try:
-            #######NEU###### TESTEN ####
             t0 = time.time()
             self.con.writeline("HEAD ON")
             #freeze the Oszi
             self.con.writeline("ACQ:STATE 0")
-
+            #setup encoding
             self.con.writeline("DAT:ENC RIB")
             self.con.writeline("DAT:WID "+str(byte_wid))
+            #setup start and endpoint
             self.con.writeline("DAT:STAR 1")
             self.con.writeline("DAT:STOP 2500")
-            
+            #now read CH1
             if read_ch1:
                 self.con.writeline("DAT:SOU CH1")
                 out = self.con.query("WFMPRe:XINCR?;XZERO?;YMULT?;YZERO?;YOFF?") #only request neccessary parameters (not complete WFMPRe?)
@@ -109,30 +95,25 @@ plt.show()
 
                 self.con.writeline("CURV?") #request the curve data    
                 out = self.con.readline_raw()
-                out = out[13:-1]
-                #self.con.read(7) #read ":CURVE "
-                #self.con.read(6) #read "#45000" or "#42500": 5000 or 2500 is the datapoint amount
-                
-                #out = self.con.read_raw(13+byte_wid*2500+2)[13:-2]
-                #out = self.con.read_raw(byte_wid*2500+2)[15:-2]
-#                # read the closing \r\n
-#                self.con.read(2)
+                out = out[13:-1] #drop the first 13 chars: ":CURVE #45000" and the last '\n'
+                #so now out contains only the bytes of the curve data
                 
                 if byte_wid == 1:
-                    if len(out) > 2500:
+                    if len(out) > 2500: #should not happen
                         out = out[:2500]
                         print("1: must drop one")
                     data1 = np.fromstring(out, dtype='b')
                 else:
-                    if len(out) > 5000:
-                        out = out[:5000] #drop another char  (only neccessary when using serial connection COM port)??
+                    if len(out) > 5000: #should not happen
+                        out = out[:5000]
                         print("2: must drop one")
                     data1 = np.fromstring(out, dtype='>i2')
                     
-                # add offset to data
+                # add y-offset to data
                 data1 = np.add(data1,np.ones(data1.shape)*(-float(params['YOFF'])))
-                # multiply to get voltage
+                # multiply value to get the actual voltage
                 data1 *= float(params['YMULT'])
+            #now read CH2    
             if read_ch2:            
                 self.con.writeline("DAT:SOU CH2")
                 self.con.writeline("WFMPRe:XINCR?;XZERO?;YMULT?;YZERO?;YOFF?") #only request neccessary parameters (not complete WFMPRe?)
@@ -148,12 +129,6 @@ plt.show()
                 self.con.writeline("CURV?") #request the curve data
                 out = self.con.readline_raw()
                 out = out[13:-1]                
-#                self.con.read(7) #read ":CURVE "
-#                self.con.read(6) #read "#45000" or "#42500": 5000 or 2500 is the datapoint amount
-#                
-#                out = self.con.read_raw(byte_wid*2500)
-#                # read the closing \r\n
-#                self.con.read(2)
                 
                 if byte_wid == 1:
                     if len(out) > 2500:
@@ -178,9 +153,11 @@ plt.show()
                             
             
             
-            #unfreeze the Oszi
+            #finally unfreeze the Oszi
             self.con.writeline("ACQ:STATE 1")
-            #self.con.close()
+            
+            if self.debug:
+                print("Reading took: "+str(time.time() - t0)+"sec")
             if read_ch1 and read_ch2:
                 return x, data1, data2
             if read_ch1:
