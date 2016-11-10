@@ -4,38 +4,39 @@ import io
 
 class SerialComm:
 
-    def __init__(self, address, baudrate='9600', eol='\r\n'): #eol = None means universal EOL is used! all eol received (\n \r or \r\n) are translated to \n
+    def __init__(self, address, baudrate=9600, timeout=2000, eol='\r\n'):
         self.serial = serial.Serial(port=address, baudrate=baudrate)
-        self.serial.timeout = 2000 # adjust to 2sec, but when downloading Data increase to 10 sec! and afterwrds back to 2sec
+        self.serial.timeout = timeout
+        self.eol = eol
+        self.b_eol = eol.encode('ascii')
         
     def readline(self):
         out = ""
-        while not '\r\n' in out:
+        while not self.eol in out:
             out += self.serial.read(self.serial.inWaiting()).decode('ascii')
-        return out.replace('\r\n','')
+        return out.replace(self.eol,'\n')
 
         
     def read(self, bytes=1):
         return self.serial.read(bytes).decode('ascii')
-        #return self.connection.read(bytes)
         
     def readline_raw(self):
         out = b""
-        while not b'\r\n' in out:
+        while not self.b_eol in out:
             out += self.serial.read(self.serial.inWaiting())
-        return out.replace(b'\r\n',b'\n')
+        return out.replace(self.b_eol,b'\n')
 
     def write(self, message):
         self.writeline(message)
     
     def writeline(self, message):
-        self.serial.write((message+"\r\n").encode('ascii'))
+        self.serial.write((message+self.eol).encode('ascii'))
         
-    def query(self, msg, timeout=None):#, append_eol=True):
+    def query(self, msg, timeout=None):
         oldTimeout = self.serial.timeout
         if timeout:
             self.serial.timeout = timeout
-        self.write(msg)#, append_eol)
+        self.write(msg)
         result = self.readline()
         self.serial.timeout = oldTimeout
         return result
