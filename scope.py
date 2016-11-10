@@ -182,4 +182,3 @@ plt.show()
             except:
                 print("Error Closing")
                 return (0,0)
-
