@@ -3,6 +3,15 @@ import time
 import numpy as np
 import traceback
 
+import logging, logging.handlers
+
+logger = logging.getLogger('ScopeLogger')        
+handler = logging.handlers.RotatingFileHandler('C:/Temp/pyScopeTools.log', maxBytes=1024*1024*50)
+handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(name)s: %(message)s'))
+handler.setLevel(logging.DEBUG)
+logger.setLevel(logging.DEBUG)
+logger.addHandler(handler) 
+
 
 class Scope:
     """Object modeling the oszilloscope
@@ -30,7 +39,7 @@ plt.show()
 #   normal mode: 0.55sec
 #   fast mode:   0.37sec
 
-    def __init__(self, address, baudrate=9600, timeout=6000, debug = False):
+    def __init__(self, address, baudrate=9600, timeout=5, debug = False):
         """Create the scope object with given parameters
 
         Arguments:
@@ -52,6 +61,54 @@ plt.show()
         else:
             print("No valid address type")
         self.debug = debug
+
+        self.con.writeline("ACQ:STATE 1") #set oszi non freezing
+        
+    def get_oszi_ID(self):    
+        result = self.con.query("ID?")
+        return result
+        
+    def config_channel(self, channel=1, bandwidth="OFF",  coupling="DC", position=0.0, scale=1.0, probe=1): #enable, scale, x-position?
+        if channel not in (1, 2):
+            raise InvalidArgumentException("The channel must be 1 or 2")
+        if bandwidth not in ("ON", "OFF"):
+            raise InvalidArgumentException("The bandwidth must be 'OFF' (full, 60MHz) or 'ON' (20MHz)") 
+        if coupling not in ("DC", "AC", "GND"):
+            raise InvalidArgumentException("The coupling must be 'DC', 'AC' or 'GND'")
+        if probe not in (1, 10, 100, 1000):
+            raise InvalidArgumentException("The probe must be 1, 10, 100 or 1000")    
+
+        self.con.writeline(":CH{:d}:PROBE {:d};SCALE {:.2E};POSITION {:.2E};COUPLING {:s};BANDWIDTH {:s}".format(channel, probe, scale, position, coupling, bandwidth))
+
+    def get_channel_config(self, channel=1):
+        result = self.con.query("CH"+str(channel)+"?")
+        result = result[5:-1] #crop leading ":CH1:" and trailing "\n"
+        split = result.split(';')
+        result = {}
+        for s in split:
+            ss = s.split()
+            result[ss[0]] = ss[1]    
+        result['POSITION'] = eval(result['POSITION']) #convert to float
+        result['SCALE'] = eval(result['SCALE'])
+        result['PROBE'] = eval(result['PROBE'])    
+        return result
+    
+#    def get_time_config(self):
+#        result = self.con.query("HOR?")
+#        result = result[12:-1] #crop ":HORIZONTAL:" and trailing "\n"
+#        split = result.split(";")
+#        VIEW MAIN, ZONE, WINDOW
+#        RECORDLENGTH 2500
+#
+#        print(result)
+
+    def config_time(self, position=0.0, scale=1.0): #scale
+        self.con.writeline(":HOR:POS {:.2E};SCA {:.2E}".format(position, scale))
+        
+    def config_trigger(self): #type, value, x-position?
+    #TRIG?
+        pass
+        
         
     def readScope(self, channel="CH1", fast_mode=True):
         """Read the data from scope without changing settings
@@ -60,6 +117,7 @@ plt.show()
         channel - channel to be read (default: "CH1"), also possible "CH1CH2"
         fast_mode - use 1byte vs use 2bytes per data point
         """
+        logger.info("now read scope")
         byte_wid = 1 if fast_mode else 2
         read_ch1 = "CH1" in channel
         read_ch2 = "CH2" in channel
@@ -81,11 +139,15 @@ plt.show()
             if self.debug: print("setup start & end value")
             self.con.writeline("DAT:STAR 1")
             self.con.writeline("DAT:STOP 2500")
+            logger.info("Config done")
             #now read CH1
             if read_ch1:
                 if self.debug: print("request CH1")
                 self.con.writeline("DAT:SOU CH1")
+                logger.info("QUERY params")
+                time.sleep(0.5)
                 out = self.con.query("WFMPRe:XINCR?;XZERO?;YMULT?;YZERO?;YOFF?") #only request neccessary parameters (not complete WFMPRe?)
+                logger.info("params: "+str(out))
                 #maybe also request XUNIT and YUNIT? but it seems to be always sec and Volts
 #                out = self.con.readline()
 #                if out[-1] == 'E':
@@ -96,8 +158,10 @@ plt.show()
                      d = s.split(" ") #now split on the space sign
                      params[d[0][8:]] = d[1]
 
-                self.con.writeline("CURV?") #request the curve data    
-                out = self.con.readline_raw()
+                self.con.writeline("CURV?") #request the curve data  
+                logger.info("request curve1 Data")  
+                out = self.con.readline_raw(2500 if byte_wid==1 else 5000)
+                logger.info("received curve1 Data")
                 out = out[13:-1] #drop the first 13 chars: ":CURVE #45000" and the last '\n'
                 #so now out contains only the bytes of the curve data
                 
@@ -120,9 +184,9 @@ plt.show()
             if read_ch2:            
                 if self.debug: print("request CH2")
                 self.con.writeline("DAT:SOU CH2")
-                self.con.writeline("WFMPRe:XINCR?;XZERO?;YMULT?;YZERO?;YOFF?") #only request neccessary parameters (not complete WFMPRe?)
+                time.sleep(0.5)
+                out = self.con.query("WFMPRe:XINCR?;XZERO?;YMULT?;YZERO?;YOFF?") #only request neccessary parameters (not complete WFMPRe?)
                 #maybe also request XUNIT and YUNIT? but it seems to be always sec and Volts
-                out = self.con.readline()
                 
                 params = {}
                 out = out.split(';')
@@ -131,7 +195,9 @@ plt.show()
                      params[d[0][8:]] = d[1]
 
                 self.con.writeline("CURV?") #request the curve data
-                out = self.con.readline_raw()
+                logger.info("request curve2 Data")
+                out = self.con.readline_raw(2500 if byte_wid==1 else 5000)
+                logger.info("received curve2 Data")
                 out = out[13:-1]                
                 
                 if byte_wid == 1:
@@ -175,6 +241,7 @@ plt.show()
         except:
             # error in read
             traceback.print_exc()
+            raise
             try:
                 print("An Error occurred")
                 self.con.close()
