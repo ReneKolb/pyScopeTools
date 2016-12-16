@@ -3,16 +3,6 @@ import time
 import numpy as np
 import traceback
 
-import logging, logging.handlers
-
-logger = logging.getLogger('ScopeLogger')        
-handler = logging.handlers.RotatingFileHandler('C:/Temp/pyScopeTools.log', maxBytes=1024*1024*50)
-handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(name)s: %(message)s'))
-handler.setLevel(logging.DEBUG)
-logger.setLevel(logging.DEBUG)
-logger.addHandler(handler) 
-
-
 class Scope:
     """Object modeling the oszilloscope
 
@@ -64,21 +54,68 @@ plt.show()
 
         self.con.writeline("ACQ:STATE 1") #set oszi non freezing
         
-    def get_oszi_ID(self):    
+    def get_oszi_ID(self):
+        """
+        Query the ID of the oszi.    
+        """
         result = self.con.query("ID?")
         return result
         
-    def config_channel(self, channel=1, bandwidth="OFF",  coupling="DC", position=0.0, scale=1.0, probe=1): #enable, scale, x-position?
+    def config_channel(self, channel=1, bandwidth=None,  coupling=None, position=None, scale=None, probe=None): #enable, scale, x-position?
+        """
+        Configure channel settings.
+
+        This method configures the selected channel. Passing None to an argument will leave
+        out part of the configuration and will not change it on the oszi.
+
+        Parameters
+        ----------
+        channel : int [0, 1]
+            This parameters selects the channel.
+        bandwidth : str ["ON", "OFF"]
+            This parameter specifies which bandwidth the oszi should use. "Off" means full (60MHz),
+            "ON" means 20MHz
+        coupling : str ["DC", "AC", "GND"]
+            This parameter secifies which coupling should be used.
+        position : float
+            This parameter specifies the vertical position in Volts.
+        scale : float
+            This paramater specifies the vertical resolution. (height in Volts of one box on the oszi)
+        probe : int [1, 10, 100, 1000]
+            This parameter specifies the probe amount? (increases input resistance and higher
+            measured voltages)
+
+        Returns
+        -------
+        bool
+            False if no configuration needed to be sent (because all arguments were None), otherwise True     
+        """
         if channel not in (1, 2):
             raise InvalidArgumentException("The channel must be 1 or 2")
-        if bandwidth not in ("ON", "OFF"):
+        if bandwidth and bandwidth not in ("ON", "OFF"):
             raise InvalidArgumentException("The bandwidth must be 'OFF' (full, 60MHz) or 'ON' (20MHz)") 
-        if coupling not in ("DC", "AC", "GND"):
+        if coupling and coupling not in ("DC", "AC", "GND"):
             raise InvalidArgumentException("The coupling must be 'DC', 'AC' or 'GND'")
-        if probe not in (1, 10, 100, 1000):
+        if (probe is not None) and probe not in (1, 10, 100, 1000):
             raise InvalidArgumentException("The probe must be 1, 10, 100 or 1000")    
 
-        self.con.writeline(":CH{:d}:PROBE {:d};SCALE {:.2E};POSITION {:.2E};COUPLING {:s};BANDWIDTH {:s}".format(channel, probe, scale, position, coupling, bandwidth))
+        command = ":CH{:d}:".format(channel)
+        if probe is not None:
+            command += "PRO {:d};".format(probe)
+        if scale is not None:
+            command += "SCA {:.2E};".format(scale)
+        if position is not None:
+            command += "POS {:.2E};".format(position)
+        if coupling:
+            command += "COUP "+coupling+";"
+        if bandwidth:
+            command += "BAN "+bandwidth+";"
+        command = command[:-1] #crop trailing ';'                    
+        #self.con.writeline(":CH{:d}:PROBE {:d};SCALE {:.2E};POSITION {:.2E};COUPLING {:s};BANDWIDTH {:s}".format(channel, probe, scale, position, coupling, bandwidth))
+        if len(command) > 6:
+            self.con.writeline(command)
+            return True
+        return False    
 
     def get_channel_config(self, channel=1):
         result = self.con.query("CH"+str(channel)+"?")
@@ -93,31 +130,98 @@ plt.show()
         result['PROBE'] = eval(result['PROBE'])    
         return result
     
-#    def get_time_config(self):
-#        result = self.con.query("HOR?")
-#        result = result[12:-1] #crop ":HORIZONTAL:" and trailing "\n"
-#        split = result.split(";")
-#        VIEW MAIN, ZONE, WINDOW
-#        RECORDLENGTH 2500
-#
-#        print(result)
+    def get_time_config(self):
+        result = self.con.query("HOR:MAI?")
+        print("result = "+result)
+        result = result[17:-1] #crop leading :HORIZONTAL:MAIN: & trailing \n
+        print("result = "+result)
+        split = result.split(";")
+        print("split = "+str(split))
+        result = {}
+        for s in split:
+            print("read: "+s)
+            ss = s.split()
+            result[ss[0]] = ss[1]
+        result['SCALE'] = eval(result['SCALE'])
+        result['POSITION'] = eval(result['POSITION'])
 
-    def config_time(self, position=0.0, scale=1.0): #scale
-        self.con.writeline(":HOR:POS {:.2E};SCA {:.2E}".format(position, scale))
+        return result
+
+    def config_time(self, position=0.0, scale=1.0):
+        command  = ":HOR:"
+        if position is not None:
+            command += "POS {:.2E};".format(position)
+        if scale is not None:
+            command += "SCA {:.2E};".format(scale)
+        command = command[:-1] #crop trailing ';'        
+        #self.con.writeline(":HOR:POS {:.2E};SCA {:.2E}".format(position, scale))
+        if len(command) > 6:
+            self.con.writeline(command)
+            return True
+        return False    
         
-    def config_trigger(self): #type, value, x-position?
-    #TRIG?
-        pass
-        
-        
+    def get_trigger_config(self):
+        result = self.con.query(":TRIG:MAI?")
+        result = result[:-1] #crop trailing \n
+        split = result.split(";")
+        result = {}
+        for s in split:
+            ss = s.split()
+            if "MODE" in ss[0]:
+                result['MODE'] = ss[1] #NORMAL, AUTO
+            if "TYPE" in ss[0]:
+                result['TYPE'] = ss[1] #EDGE, (VIDEO)
+            if "COUPLING" in ss[0]:
+                result['COUPLING'] = ss[1] #DC, NOISEREJ, HFREJ, LFREJ, AC
+            if "SLOPE" in ss[0]:
+                result['SLOPE'] = ss[1] #RISE, FALL
+            if "LEVEL" in ss[0]:    
+                result['LEVEL'] = ss[1]
+
+        return result
+    
+    def config_trigger(self, mode=None, typ=None, coupling=None, slope=None, level=None):
+        if mode and mode not in ("NORMAL", "AUTO"):
+            raise InvalidArgumentException("Mode must be 'NORMAL' or 'AUTO'")
+        if typ and typ not in ("EDGE", "VIDEO"):
+            raise InvalidArgumentException("Type must be 'EDGE' or 'VIDEO'")
+        if coupling and coupling not in ("AC", "DC", "NOISEREJ", "HFREJ", "NJREJ"):    
+            raise InvalidArgumentException("coupling must be 'AC', 'DC', 'NOISEREJ', 'HFREJ' or 'NJREJ'")
+        if slope and slope not in ("RISE", "FALL"):
+            raise InvalidArgumentException("slope must be 'RISE' or 'FALL'")
+
+        command = ""
+        if mode or typ or (level is not None):
+            command = ":TRIG:MAI:"
+            if mode:
+                command += "MOD "+mode+";"
+            if typ:
+                command += "TYP "+typ+";"
+            if level is not None:
+                command += "LEV {:.2E};".format(level)
+
+        if coupling or slope:
+            command += ":TRIG:MAI:EDGE:"
+            if coupling:
+                command += "COUP "+coupling+";"
+            if slope:
+                command += "SLO "+slope +";"
+        command = command[:-1] #crop trailing ';'
+
+        if len(command) > 11:
+            self.con.writeline(command)
+            return True
+        return False    
+
     def readScope(self, channel="CH1", fast_mode=True):
-        """Read the data from scope without changing settings
+        """
+        Read the data from scope without changing settings
 
         Keyword arguments:
         channel - channel to be read (default: "CH1"), also possible "CH1CH2"
-        fast_mode - use 1byte vs use 2bytes per data point
+        fast_mode - use 1byte vs 2bytes per data point
         """
-        logger.info("now read scope")
+        #logger.info("now read scope")
         byte_wid = 1 if fast_mode else 2
         read_ch1 = "CH1" in channel
         read_ch2 = "CH2" in channel
@@ -139,19 +243,13 @@ plt.show()
             if self.debug: print("setup start & end value")
             self.con.writeline("DAT:STAR 1")
             self.con.writeline("DAT:STOP 2500")
-            logger.info("Config done")
             #now read CH1
             if read_ch1:
                 if self.debug: print("request CH1")
                 self.con.writeline("DAT:SOU CH1")
-                logger.info("QUERY params")
                 time.sleep(0.5)
                 out = self.con.query("WFMPRe:XINCR?;XZERO?;YMULT?;YZERO?;YOFF?") #only request neccessary parameters (not complete WFMPRe?)
-                logger.info("params: "+str(out))
                 #maybe also request XUNIT and YUNIT? but it seems to be always sec and Volts
-#                out = self.con.readline()
-#                if out[-1] == 'E':
-#                    out += "1"
                 params = {}
                 out = out.split(';')
                 for s in out:
@@ -159,9 +257,7 @@ plt.show()
                      params[d[0][8:]] = d[1]
 
                 self.con.writeline("CURV?") #request the curve data  
-                logger.info("request curve1 Data")  
                 out = self.con.readline_raw(2500 if byte_wid==1 else 5000)
-                logger.info("received curve1 Data")
                 out = out[13:-1] #drop the first 13 chars: ":CURVE #45000" and the last '\n'
                 #so now out contains only the bytes of the curve data
                 
@@ -195,9 +291,7 @@ plt.show()
                      params[d[0][8:]] = d[1]
 
                 self.con.writeline("CURV?") #request the curve data
-                logger.info("request curve2 Data")
                 out = self.con.readline_raw(2500 if byte_wid==1 else 5000)
-                logger.info("received curve2 Data")
                 out = out[13:-1]                
                 
                 if byte_wid == 1:
