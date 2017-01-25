@@ -22,7 +22,12 @@ class GPIBComm:
             
         if timeout:
             self.inst.timeout = timeout
-        
+
+        self.do_init_oszi()    
+    
+    def do_init_oszi(self):
+        self.writeline("*CLS") #clear status
+
     def readline(self):
         return self.inst.read()
         

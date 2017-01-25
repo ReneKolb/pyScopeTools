@@ -44,10 +44,10 @@ plt.show()
         """
         if "COM" in address:
             import serialConnection
-            self.con = serialConnection.SerialComm(address, baudrate, timeout=timeout, eol='\r\n')
+            self.con = serialConnection.SerialComm(address, baudrate, timeout=timeout, eol='\r\n') #timeout in s
         elif "GPIB" in address:
             import GPIBConnection
-            self.con = GPIBConnection.GPIBComm(address, timeout=timeout, eol='\r\n')
+            self.con = GPIBConnection.GPIBComm(address, timeout=timeout*1000, eol='\r\n')          #timeout in ms
         else:
             print("No valid address type")
         self.debug = debug
