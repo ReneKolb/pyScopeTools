@@ -60,6 +60,9 @@ plt.show()
         """
         result = self.con.query("ID?")
         return result
+
+    def unfreeze(self):
+        self.con.writeline("ACQ:STATE 1")    
         
     def config_channel(self, channel=1, bandwidth=None,  coupling=None, position=None, scale=None, probe=None): #enable, scale, x-position?
         """
