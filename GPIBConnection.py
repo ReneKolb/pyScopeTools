@@ -1,5 +1,6 @@
 from __future__ import print_function
 import visa
+import time
 
 """
 IMPORTANT: install pyVisa ! (e.g via pip install pyVisa). this requires that the NI-Visa driver is already installed
@@ -35,7 +36,7 @@ class GPIBComm:
         return self.readline_raw()
         #return self.connection.read(bytes)
         
-    def readline_raw(self):
+    def readline_raw(self, min_bytes):
         return self.inst.read_raw()
 
     def write(self, message):

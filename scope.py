@@ -47,12 +47,12 @@ plt.show()
             self.con = serialConnection.SerialComm(address, baudrate, timeout=timeout, eol='\r\n') #timeout in s
         elif "GPIB" in address:
             import GPIBConnection
-            self.con = GPIBConnection.GPIBComm(address, timeout=timeout*1000, eol='\r\n')          #timeout in ms
+            self.con = GPIBConnection.GPIBComm(address, timeout=timeout*1000)#, eol='\r\n')          #timeout in ms
         else:
             print("No valid address type")
         self.debug = debug
 
-        self.con.writeline("ACQ:STATE 1") #set oszi non freezing
+        #self.con.writeline("ACQ:STATE 1") #set oszi non freezing
         
     def get_oszi_ID(self):
         """
@@ -216,13 +216,14 @@ plt.show()
             return True
         return False    
 
-    def readScope(self, channel="CH1", fast_mode=True):
+    def readScope(self, channel="CH1", fast_mode=True, freeze_scope=False):
         """
         Read the data from scope without changing settings
 
         Keyword arguments:
         channel - channel to be read (default: "CH1"), also possible "CH1CH2"
         fast_mode - use 1byte vs 2bytes per data point
+        freeze_scope - true, if the acquisition is stopped during transfering the data
         """
         #logger.info("now read scope")
         byte_wid = 1 if fast_mode else 2
@@ -235,9 +236,10 @@ plt.show()
         try:
             t0 = time.time()
             self.con.writeline("HEAD ON")
-            #freeze the Oszi
-            if self.debug: print("freeze oszi")
-            self.con.writeline("ACQ:STATE 0")
+            if freeze_scope:
+                #freeze the Oszi
+                if self.debug: print("freeze oszi")
+                self.con.writeline("ACQ:STATE 0")
             #setup encoding
             if self.debug: print("setup encoding")
             self.con.writeline("DAT:ENC RIB")
@@ -251,13 +253,15 @@ plt.show()
                 if self.debug: print("request CH1")
                 self.con.writeline("DAT:SOU CH1")
                 time.sleep(0.5)
-                out = self.con.query("WFMPRe:XINCR?;XZERO?;YMULT?;YZERO?;YOFF?") #only request neccessary parameters (not complete WFMPRe?)
-                #maybe also request XUNIT and YUNIT? but it seems to be always sec and Volts
+                #out = self.con.query("WFMPRe:XINCR?;XZERO?;YMULT?;YZERO?;YOFF?") #only request neccessary parameters (not complete WFMPRe?)
+                out = self.con.query("WFMPRe?")
                 params = {}
+                params['XZERO'] = 0.0 #if the oszi does not support this, add a default value (for TDS 744A)
                 out = out.split(';')
                 for s in out:
-                     d = s.split(" ") #now split on the space sign
-                     params[d[0][8:]] = d[1]
+                    d = s.split(" ") #now split on the space sign
+                    #params[d[0][8:]] = d[1]
+                    params[d[0]] = d[1]
 
                 self.con.writeline("CURV?") #request the curve data  
                 out = self.con.readline_raw(2500 if byte_wid==1 else 5000)
@@ -284,14 +288,17 @@ plt.show()
                 if self.debug: print("request CH2")
                 self.con.writeline("DAT:SOU CH2")
                 time.sleep(0.5)
-                out = self.con.query("WFMPRe:XINCR?;XZERO?;YMULT?;YZERO?;YOFF?") #only request neccessary parameters (not complete WFMPRe?)
+                #out = self.con.query("WFMPRe:XINCR?;XZERO?;YMULT?;YZERO?;YOFF?") #only request neccessary parameters (not complete WFMPRe?)
                 #maybe also request XUNIT and YUNIT? but it seems to be always sec and Volts
-                
+                out = self.con.query("WFMPRe?")
                 params = {}
+                params['XZERO'] = 0.0 #if the oszi does not support this, add a default value (for TDS 744A)
+               
                 out = out.split(';')
                 for s in out:
-                     d = s.split(" ") #now split on the space sign
-                     params[d[0][8:]] = d[1]
+                    d = s.split(" ") #now split on the space sign
+                    #params[d[0][8:]] = d[1]
+                    params[d[0]] = d[1]
 
                 self.con.writeline("CURV?") #request the curve data
                 out = self.con.readline_raw(2500 if byte_wid==1 else 5000)
@@ -314,15 +321,16 @@ plt.show()
                 data2 *= float(params['YMULT'])
     
             # create x axis
+            y_amount = len(data1) #2500
             x = np.arange(float(params['XZERO']),
-                            float(params['XZERO'])+2500*float(params['XINCR']),
+                            float(params['XZERO'])+y_amount*float(params['XINCR']),
                             float(params['XINCR']))    
                             
             
-            
-            #finally unfreeze the Oszi
-            if self.debug: print("unfreeze oszi")
-            self.con.writeline("ACQ:STATE 1")
+            if freeze_scope:
+                #finally unfreeze the Oszi
+                if self.debug: print("unfreeze oszi")
+                self.con.writeline("ACQ:STATE 1")
             if self.debug: print("done")
             if self.debug:
                 print("Reading took: "+str(time.time() - t0)+"sec")    
