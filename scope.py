@@ -34,7 +34,8 @@ plt.show()
 
         Arguments:
         address - the com port to be used, eg "COM1"
-                  or a GPIB address like "u'GPIB0::1::INSTR'"
+                  or a GPIB address LQ_GPIB like 'LQ_GPIB:1' (for using a LQElectronics UGPlus USB to GPIB Controller)
+                  or a GPIB address like "u'GPIB0::1::INSTR'" (for using a Nation Instruments GPIB adapter)
                   the address is obtained by using GPIBConnection.list_devices()
 
         Keyword arguments:
@@ -45,6 +46,9 @@ plt.show()
         if "COM" in address:
             import serialConnection
             self.con = serialConnection.SerialComm(address, baudrate, timeout=timeout, eol='\r\n') #timeout in s
+        elif "LQ_GPIB:" in address:
+            import LQ_GPIBConnection
+            self.con = LQ_GPIBConnection.LQ_GPIBComm(address)
         elif "GPIB" in address:
             import GPIBConnection
             self.con = GPIBConnection.GPIBComm(address, timeout=timeout*1000)#, eol='\r\n')          #timeout in ms
