@@ -48,7 +48,7 @@ plt.show()
             self.con = serialConnection.SerialComm(address, baudrate, timeout=timeout, eol='\r\n') #timeout in s
         elif "LQ_GPIB:" in address:
             import LQ_GPIBConnection
-            self.con = LQ_GPIBConnection.LQ_GPIBComm(address)
+            self.con = LQ_GPIBConnection.LQ_GPIBComm(int(address[8:]))
         elif "GPIB" in address:
             import GPIBConnection
             self.con = GPIBConnection.GPIBComm(address, timeout=timeout*1000)#, eol='\r\n')          #timeout in ms
